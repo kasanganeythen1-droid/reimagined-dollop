@@ -38,29 +38,43 @@ const startBot = async () => {
   });
 
   sock.ev.on('messages.upsert', async (m) => {
-    const msg = m.messages[0];
+    try {
+      const msg = m.messages[0];
 
-    if (!msg.message) return;
+      if (!msg.message) return;
 
-    const sender = msg.key.remoteJid;
-    const messageType = Object.keys(msg.message)[0];
-    const messageContent =
-      msg.message[messageType].text || msg.message[messageType].caption || '';
+      const sender = msg.key.remoteJid;
+      const messageType = Object.keys(msg.message)[0];
+      const messageContent =
+        msg.message[messageType]?.text || msg.message[messageType]?.caption || '';
 
-    console.log(`Message from ${sender}: ${messageContent}`);
+      const isGroup = sender.endsWith('@g.us');
+      const senderName = msg.pushName || 'User';
 
-    // Bot commands
-    if (messageContent.toLowerCase() === '!ping') {
-      await sock.sendMessage(sender, { text: '🏓 Pong!' });
+      console.log(`[${isGroup ? 'GROUP' : 'PRIVATE'}] ${senderName}: ${messageContent}`);
+
+      // Import command handlers
+      const { handleCommand } = require('./commands/commandHandler');
+      
+      // Process the message
+      await handleCommand(sock, msg, sender, messageContent, senderName, isGroup);
+    } catch (error) {
+      console.error('Error processing message:', error);
     }
+  });
 
-    if (messageContent.toLowerCase() === '!hello') {
-      await sock.sendMessage(sender, { text: '👋 Hello! How can I help you?' });
-    }
-
-    if (messageContent.toLowerCase().startsWith('!echo ')) {
-      const echoText = messageContent.slice(6);
-      await sock.sendMessage(sender, { text: echoText });
+  // Welcome new members
+  sock.ev.on('group-participants.update', async (update) => {
+    try {
+      const { id, participants, action } = update;
+      if (action === 'add') {
+        const welcomeMsg = `👋 Welcome to the group, ${participants.map(p => '@' + p.split('@')[0]).join(', ')}!\n\nType !help to see available commands.`;
+        await sock.sendMessage(id, { text: welcomeMsg, mentions: participants });
+      } else if (action === 'remove') {
+        console.log(`Members ${participants.join(', ')} left the group`);
+      }
+    } catch (error) {
+      console.error('Error handling group update:', error);
     }
   });
 
